@@ -41,19 +41,21 @@ from PyPoE.ui.shared.file.handler import *
 
 __all__ = ['FileDataManager']
 
-#EXTENSION_ANY = 1
-#FILE_ANY = 1
+# EXTENSION_ANY = 1
+# FILE_ANY = 1
 
 # =============================================================================
 # Classes
 # =============================================================================
 
-class FileDataManager(object):
+
+class FileDataManager:
     # Settings
     EXTENSION_ANY = 1
     FILE_ANY = 1
     # Some default instances
     DAT_DATA_HANDLER = DatDataHandler()
+    DAT_DATA_HANDLER_64 = DatDataHandler(x64=True)
     DDS_DATA_HANDLER = DDSDataHandler()
     IMAGE_DATA_HANDLER = ImageDataHandler()
     TEXT_DATA_HANDLER_UTF8 = TextDataHandler('utf-8')
@@ -86,10 +88,11 @@ class FileDataManager(object):
         ('.ast', None),
         ('.atlas', TEXT_DATA_HANDLER_UTF16_LE),  # GGG Format? Decals on materials
         ('.bat', TEXT_DATA_HANDLER_UTF8),  # Windows Batch File/Script
-        ('.cfg', TEXT_DATA_HANDLER_UTF8), # Config File
+        ('.cfg', TEXT_DATA_HANDLER_UTF8),  # Config File
         ('.cht', TEXT_DATA_HANDLER_UTF16_LE),  # GGG Format? Terrain.
         ('.clt', TEXT_DATA_HANDLER_UTF16_LE),  # GGG Format? Terrain.
         ('.dat', DAT_DATA_HANDLER),  # TODO
+        ('.dat64', DAT_DATA_HANDLER_64),
         ('.dct', TEXT_DATA_HANDLER_UTF16_LE),  # GGG Format? Terrain.
         # DirectDraw Surface format
         # Only images are supported atm (TODO?)
@@ -118,10 +121,10 @@ class FileDataManager(object):
         # GGG Format. Some compiled stuff or binary data
         # Only one at: Metadata/Effects/Spells/rampage/shockwave/rig.mb
         ('.mb', None),
-        ('.mel', TEXT_DATA_HANDLER_UTF8), # Maya Embeeded Language
+        ('.mel', TEXT_DATA_HANDLER_UTF8),  # Maya Embeeded Language
         ('.mtd', TEXT_DATA_HANDLER_UTF16_LE),  # GGG Format? Terrain.
-        ('.mtp', TEXT_DATA_HANDLER_UTF16_LE),  # GGG Format? MiniMap stuff TODO semi-broken display
-        ('.ogg', None), # TODO OGG Music Format
+        ('.mtp', TEXT_DATA_HANDLER_UTF16_LE),  # GGG Format? MiniMap stuff TODO: semi-broken display
+        ('.ogg', None),  # TODO: OGG Music Format
         ('.ot', TEXT_DATA_HANDLER_UTF16_LE),  # GGG Format? Metadata
         ('.otc', TEXT_DATA_HANDLER_UTF16_LE),  # GGG Format? Metadata Client
         ('.pet', TEXT_DATA_HANDLER_UTF16_LE),  # GGG Format?
@@ -151,7 +154,7 @@ class FileDataManager(object):
         ('.sm', TEXT_DATA_HANDLER_UTF16_LE),
         # GGG Format? Probably the compiled skinned mash
         ('.smd', TEXT_DATA_HANDLER_UTF16_LE),
-        ('.tdt', None),  # GGG Format? # TODO ASCII?
+        ('.tdt', None),  # GGG Format? # TODO: ASCII?
         # GGG Format? Mesh for tiles
         # Accompanied by a corresponding .tgt file
         ('.tgm', None),
@@ -182,6 +185,7 @@ class FileDataManager(object):
         ('.xls', None),  # Microsoft Excel
         ('.xml', None),  # XML Files
     ]
+
     def __init__(self, parent, load_default=True):
         self._parent = parent
         self.handlers = {
@@ -246,7 +250,7 @@ class FileDataManager(object):
         else:
             raise TypeError('extension must be a string or EXTENSION_ANY')
 
-        if (isinstance(filenames, collections.Iterable) or
+        if (isinstance(filenames, collections.abc.Iterable) or
                 isinstance(filenames, int) and
                 filenames == FileDataManager.FILE_ANY):
             pass

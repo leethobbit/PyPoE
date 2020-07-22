@@ -115,7 +115,8 @@ import os
 import warnings
 from enum import IntEnum
 from string import ascii_letters
-from collections import Iterable, OrderedDict, defaultdict
+from collections.abc import Iterable
+from collections import OrderedDict, defaultdict
 
 # self
 from PyPoE import DATA_DIR
@@ -143,7 +144,7 @@ CUSTOM_TRANSLATION_FILE = os.path.join(DATA_DIR, 'custom_descriptions.txt')
 regex_translation_string = re.compile(
     r'^'
     r'[\s]*'
-    r'(?P<minmax>(?:[0-9\-\|#]+[ \t]+)+)'
+    r'(?P<minmax>(?:[0-9\-\|#!]+[ \t]+)+)'
     r'"(?P<description>.*)"'
     r'(?P<quantifier>(?:[ \t]*[\w%]+)*)'
     r'[ \t]*[\r\n]*'
@@ -151,7 +152,7 @@ regex_translation_string = re.compile(
     re.UNICODE | re.MULTILINE
 )
 
-regex_ids = re.compile(r'([0-9](?![\w]))(?(1)(.*))', re.UNICODE)
+regex_ids = re.compile(r'.*(?!\s[0-9]+)', re.UNICODE | re.MULTILINE)
 regex_id_strings = re.compile(r'([\S]+)', re.UNICODE)
 regex_strings = re.compile(r'(?:"(.+)")|([\S]+)+', re.UNICODE)
 regex_int = re.compile(r'[0-9]+', re.UNICODE)
@@ -164,7 +165,7 @@ regex_tokens = re.compile(
     r'(?:^"(?P<header>.*)"$)'
     r'|(?:^include "(?P<include>.*)")'
     r'|(?:^no_description (?P<no_description>[\w+%]*)$)'
-    r'|(?P<description>^description)',
+    r'|(?P<description>^description[\s]*(?P<identifier>[\S]*)[\s]*$)',
     re.UNICODE | re.MULTILINE
 )
 
@@ -220,17 +221,20 @@ class Translation(TranslationReprMixin):
         :class:`Translation`
     ids : list[str]
         List of ids associated with this translation
+    identifier : str
+        Identifier if present else None
     """
 
-    __slots__ = ['languages', 'ids']
+    __slots__ = ['languages', 'ids', 'identifier']
 
     _REPR_EXTRA_ATTRIBUTES = OrderedDict((
         ('ids', None),
     ))
 
-    def __init__(self):
+    def __init__(self, identifier=None):
         self.languages = []
         self.ids = []
+        self.identifier = identifier
 
     def __eq__(self, other):
         if not isinstance(other, Translation):
@@ -401,7 +405,7 @@ class TranslationLanguage(TranslationReprMixin):
         temp.sort(key=lambda x: -x[0])
         rating, ts = temp[0]
 
-        if rating == 0:
+        if rating <= 0:
             return None
 
         return ts.format_string(short_values, is_range, use_placeholder, only_values)
@@ -707,18 +711,18 @@ class TranslationString(TranslationReprMixin):
         """
         index = 0
         values_indexes = []
-        for partial in self.strings:
+        for i, partial in enumerate(self.strings):
             match = string.find(partial, index)
             if match == -1:
                 return None
             # Matched at the start of string, no preceeding value
 
+            # Fix for TR strings starting with value
+            if i == 1 and self.strings[0] == '':
+                values_indexes.append(match)
             index = match + len(partial)
             values_indexes.append(index)
 
-        # Fix for TR strings starting with value
-        if self.strings[0] == '':
-            values_indexes.append(None)
         # Fix for TR strings ending with value
         if self.strings[-1] == '':
             values_indexes[-1] = None
@@ -742,17 +746,29 @@ class TranslationString(TranslationReprMixin):
                 # The only definitive case
                 r = self.range[i]
                 warn = True
-                if r.min == r.max and r.max is not None:
-                    val = r.min
-                    warn = False
-                elif r.min is not None and r.max is not None:
-                    val = r.max
-                elif r.min is None and r.max is not None:
-                    val = r.max
-                elif r.min is not None and r.min is None:
-                    val = r.min
+                if r.negated:
+                    if r.min == r.max and r.max is not None:
+                        val = r.max + 1
+                    elif r.min is not None and r.max is not None:
+                        val = r.max + 1
+                    elif r.min is None and r.max is not None:
+                        val = r.max + 1
+                    elif r.min is not None and r.min is None:
+                        val = r.min - 1
+                    else:
+                        val = 1
                 else:
-                    val = 0
+                    if r.min == r.max and r.max is not None:
+                        val = r.min
+                        warn = False
+                    elif r.min is not None and r.max is not None:
+                        val = r.max
+                    elif r.min is None and r.max is not None:
+                        val = r.max
+                    elif r.min is not None and r.min is None:
+                        val = r.min
+                    else:
+                        val = 0
 
                 if warn:
                     warnings.warn(
@@ -762,7 +778,6 @@ class TranslationString(TranslationReprMixin):
                     )
 
                 values[i] = val
-
         return self.quantifier.handle_reverse(values)
 
 
@@ -784,15 +799,18 @@ class TranslationRange(TranslationReprMixin):
         minimum range
     max : int
         maximum range
+    negated : bool
+        Whether the value is negated
     """
 
-    __slots__ = ['parent', 'min', 'max']
+    __slots__ = ['parent', 'min', 'max', 'negated']
 
-    def __init__(self, min, max, parent):
+    def __init__(self, min, max, parent, negated=False):
         parent.range.append(self)
         self.parent = parent
         self.min = min
         self.max = max
+        self.negated = negated
 
     def __eq__(self, other):
         if not isinstance(other, TranslationRange):
@@ -802,6 +820,9 @@ class TranslationRange(TranslationReprMixin):
             return False
 
         if self.max != other.max:
+            return False
+
+        if self.negated != other.negated:
             return False
 
         return True
@@ -824,8 +845,8 @@ class TranslationRange(TranslationReprMixin):
         -------
         int
             Returns the rating of the value
-            -100 if mismatch (out of range)
-            0 if no match
+            -10000 if mismatch (out of range)
+            -100 if no match
             1 if any range is accepted
             2 if either minimum or maximum is specified
             3 if both minimum and maximum is specified
@@ -834,25 +855,30 @@ class TranslationRange(TranslationReprMixin):
         if self.min is None and self.max is None:
             return 1
 
+        if self.negated:
+            f_comp = int.__gt__
+            f_and = bool.__or__
+        else:
+            f_comp = int.__le__
+            f_and = bool.__and__
+
         if self.min is None:
-            if value <= self.max:
+            if f_comp(value, self.max):
                 return 2
             else:
-                return -100
-
-        if self.max is None:
-            if value >= self.min:
+                return -10000
+        elif self.max is None:
+            if f_comp(self.min, value):
                 return 2
             else:
-                return -100
-
-        if self.min is not None and self.max is not None:
-            if self.min <= value <= self.max:
-                return 3
+                return -10000
+        elif self.min is not None and self.max is not None:
+            if f_and(f_comp(self.min, value), f_comp(value, self.max)):
+                 return 3
             else:
-                return -100
+                 return -10000
 
-        return 0
+        return -100
 
 
 class TranslationQuantifierHandler(TranslationReprMixin):
@@ -1106,7 +1132,7 @@ class TranslationQuantifier(TranslationReprMixin):
 class TQReminderString(TranslationQuantifier):
     def __init__(self, relational_reader, *args, **kwargs):
         self.relational_reader = relational_reader
-        super(TQReminderString, self).__init__(
+        super().__init__(
             id='reminderstring',
             type=self.QuantifierTypes.STRING,
             handler=self.handle,
@@ -1317,22 +1343,41 @@ class TranslationFile(AbstractFileReadOnly):
             match_next = regex_tokens.search(data, offset)
             offset_max = match_next.start() if match_next else len(data)
             if match.group('description'):
-                translation = Translation()
+                translation = Translation(identifier=match.group('identifier'))
 
                 # Parse the IDs for the translations
-                ids = regex_ids.search(data, offset, offset_max)
-                if ids is None:
-                    warnings.warning('Missing ID after description')
+                id_count = regex_int.search(data, offset, offset_max)
+                if id_count is None:
+                    raise ValueError(
+                        'Couldn\'t find id count between offset %s and %s' % (
+                            offset, offset_max
+                        )
+                    )
+                offset = id_count.end()
+                id_count = int(id_count.group())
 
-                offset = ids.end()
+                id_string = regex_ids.search(data, offset, offset_max)
+                if id_string is None:
+                    raise ValueError(
+                        'Couldn\'t find id count between offset %s and %s' % (
+                            offset, offset_max
+                        )
+                    )
 
-                ids = ids.group().split(maxsplit=1)
-                id_count = int(ids[0])
-                ids = re.findall(regex_id_strings, ids[1])
+                # Actually extract the individual ids
+                translation.ids = regex_id_strings.findall(id_string.group(0))
 
-                if len(ids) != id_count:
-                    warnings.warn('Length mismatch for %s' % ids)
-                translation.ids = ids
+                if len(translation.ids) != id_count:
+                    print(data[offset:offset_max])
+                    raise ValueError(
+                        'Mismatched number of id strings found (%s found vs %s '
+                        'expected) between offset %s and %s' % (
+                            len(translation.ids), id_count, offset, offset_max
+                        )
+                    )
+
+                offset = id_string.end()
+
                 t = True
                 language = 'English'
                 while t:
@@ -1354,7 +1399,7 @@ class TranslationFile(AbstractFileReadOnly):
                             raise ParserError(
                                 'Malformed translation string near line %s @ ids %s: %s' % (
                                     data.count('\n', 0, offset),
-                                    ids,
+                                    translation.ids,
                                     data[offset:offset_next_lang+1],
                                 )
                             )
@@ -1367,18 +1412,32 @@ class TranslationFile(AbstractFileReadOnly):
                         limiter = ts_match.group('minmax').strip().split()
                         for j in range(0, id_count):
                             matchstr = limiter[j]
+                            if matchstr.startswith('!'):
+                                matchstr = matchstr[1:]
+                                negated = True
+                            else:
+                                negated = False
+
                             if matchstr == '#':
-                                TranslationRange(None, None, parent=ts)
+                                TranslationRange(None, None, parent=ts,
+                                                 negated=negated)
                             elif regex_isnumber.match(matchstr):
                                 value = int(matchstr)
-                                TranslationRange(value, value, parent=ts)
+                                TranslationRange(value, value, parent=ts,
+                                                 negated=negated)
                             elif '|' in matchstr:
                                 minmax = matchstr.split('|')
                                 min = int(minmax[0]) if minmax[0] != '#' else None
                                 max = int(minmax[1]) if minmax[1] != '#' else None
-                                TranslationRange(min, max, parent=ts)
+                                TranslationRange(min, max, parent=ts,
+                                                 negated=negated)
                             else:
-                                raise Exception(matchstr)
+                                TranslationRange(None, None, parent=ts,
+                                                 negated=negated)
+                                warnings.warn(
+                                    'Malformed quantifier string "%s" near index %s (parent %s). Assuming # instead.' % (
+                                        matchstr, ts_match.start('minmax'), translation.ids
+                                    ), TranslationWarning)
 
                         ts._set_string(ts_match.group('description'))
 
@@ -1708,7 +1767,7 @@ class TranslationFileCache(AbstractFileCache):
             )
 
         # Call order matters here
-        super(TranslationFileCache, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def __getitem__(self, item):
         """
@@ -1939,6 +1998,18 @@ TranslationQuantifier(
 )
 
 TranslationQuantifier(
+    id='divide_by_three',
+    handler=lambda v: v/3,
+    reverse_handler=lambda v: float(v)*3,
+)
+
+TranslationQuantifier(
+    id='divide_by_five',
+    handler=lambda v: v/5,
+    reverse_handler=lambda v: float(v)*5,
+)
+
+TranslationQuantifier(
     id='divide_by_one_hundred',
     handler=lambda v: v/100,
     reverse_handler=lambda v: float(v)*100,
@@ -1965,6 +2036,11 @@ TranslationQuantifier(
 TranslationQuantifier(
     id='milliseconds_to_seconds_0dp',
     handler=lambda v: int(round(v/1000, 0)),
+    reverse_handler=lambda v: float(v)*1000,
+)
+TranslationQuantifier(
+    id='milliseconds_to_seconds_1dp',
+    handler=lambda v: round(v/1000, 1),
     reverse_handler=lambda v: float(v)*1000,
 )
 
@@ -2025,7 +2101,7 @@ TranslationQuantifier(
 
 TranslationQuantifier(
     id='per_minute_to_per_second_1dp',
-    handler=lambda v: int(round(v/60, 1)),
+    handler=lambda v: round(v/60, 1),
     reverse_handler=lambda v: float(v)*60,
 )
 
@@ -2042,15 +2118,27 @@ TranslationQuantifier(
 )
 
 TranslationQuantifier(
+    id='divide_by_two_0dp',
+    handler=lambda v: v//2,
+    reverse_handler=lambda v: int(v)*2,
+)
+
+TranslationQuantifier(
+    id='divide_by_six',
+    handler=lambda v: v/6,
+    reverse_handler=lambda v: int(v)*6,
+)
+
+TranslationQuantifier(
     id='divide_by_ten_0dp',
     handler=lambda v: v//10,
     reverse_handler=lambda v: int(v)*10,
 )
 
 TranslationQuantifier(
-    id='divide_by_two_0dp',
-    handler=lambda v: v//2,
-    reverse_handler=lambda v: int(v)*2,
+    id='divide_by_twelve',
+    handler=lambda v: v/12,
+    reverse_handler=lambda v: int(v)*12,
 )
 
 TranslationQuantifier(
@@ -2063,6 +2151,12 @@ TranslationQuantifier(
     id='divide_by_twenty_then_double_0dp',
     handler=lambda v: v//20*2,
     reverse_handler=lambda v: int(v)*20//2,
+)
+
+TranslationQuantifier(
+    id='times_twenty',
+    handler=lambda v: v*20,
+    reverse_handler=lambda v: int(v)//20,
 )
 
 TranslationQuantifier(

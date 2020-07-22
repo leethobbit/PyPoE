@@ -214,6 +214,22 @@ class TestTranslationResults:
             {},
         ),
         (
+            ['test_not_body', 'test_not'],
+            [50, 0],
+            ['Not value fails: 50'],
+            'Not test: Testing !0==0',
+            {},
+            {},
+        ),
+        (
+            ['test_not_body', 'test_not'],
+            [50, 1],
+            ['Not value succeeds: 50'],
+            'Not test: Testing !0==1',
+            {},
+            {},
+        ),
+        (
             ['test_plus', ],
             [20, ],
             ['Plus: +20'],
@@ -300,6 +316,14 @@ class TestTranslationResults:
             },
             None,
         ),
+        (
+            ['test_leading_value', ],
+            [50, ],
+            ['50 to value'],
+            'string starting with value',
+            {},
+            {},
+        ),
         #
         # Quantifier tests
         #
@@ -313,7 +337,8 @@ class TestTranslationResults:
         ),
     )
 
-    live_functionality_tests = (
+    live_functionality_tests = ()
+    '''live_functionality_tests = (
         # File, Tags, values, result, message, trr, reverse keyargs
         (
             'skill_stat_descriptions.txt',
@@ -325,7 +350,7 @@ class TestTranslationResults:
             {},
             None,
         ),
-    )
+    )'''
 
     test_data = []
     for size, unique_id, values in data['base']:

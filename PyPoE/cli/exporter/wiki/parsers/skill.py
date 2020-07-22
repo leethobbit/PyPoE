@@ -150,7 +150,8 @@ class SkillParserShared(parser.BaseParser):
         'Level', 'LevelRequirement', 'ManaMultiplier', 'CriticalStrikeChance',
         'ManaCost', 'DamageMultiplier', 'VaalSouls', 'VaalStoredUses',
         'VaalSoulGainPreventionTime', 'Cooldown', 'StoredUses',
-        'DamageEffectiveness'
+        'DamageEffectiveness', 'DamageMultiplier', 'AttackSpeedMultiplier',
+        'BaseDuration',
     )
 
     _SKILL_COLUMN_MAP = (
@@ -201,6 +202,15 @@ class SkillParserShared(parser.BaseParser):
         ('DamageMultiplier', {
             'template': 'damage_multiplier',
             'format': lambda v: '{0:n}'.format(v/100+100),
+        }),
+        ('AttackSpeedMultiplier', {
+            'template': 'attack_speed_multiplier',
+            'format': lambda v: '{0:n}'.format(v+100),
+        }),
+        ('BaseDuration', {
+            'template': 'duration',
+            'default': 0,
+            'format': lambda v: '{0:n}'.format(v / 1000),
         }),
     )
 
@@ -315,7 +325,8 @@ class SkillParserShared(parser.BaseParser):
         for i, row in enumerate(gepl):
             data = defaultdict()
 
-            stats = [r['Id'] for r in row['StatsKeys']] + \
+            stats = [r['Id'] for j, r in enumerate(row['StatsKeys'])
+                     if j < len(row['StatValues'])] + \
                     [r['Id'] for r in row['StatsKeys2']]
             values = row['StatValues'] + ([1, ] * len(row['StatsKeys2']))
 
@@ -340,7 +351,7 @@ class SkillParserShared(parser.BaseParser):
             qtr = tf.get_translation(
                 tags=[r['Id'] for r in row['Quality_StatsKeys']],
                 # Offset Q1000
-                values=[v/50 for v in row['Quality_Values']],
+                values=[v//50 for v in row['Quality_Values']],
                 full_result=True,
                 use_placeholder=lambda i: "{%s}" % i,
                 lang=config.get_option('language'),
@@ -363,11 +374,23 @@ class SkillParserShared(parser.BaseParser):
                     while True:
                         try:
                             index = values.index(0)
-                            del values[index]
-                            del values_parsed[index]
-                            del stats[index]
                         except ValueError:
                             break
+
+                        try:
+                            del values[index]
+                        except IndexError:
+                            pass
+
+                        try:
+                            del values_parsed[index]
+                        except IndexError:
+                            pass
+
+                        try:
+                            del stats[index]
+                        except IndexError:
+                            pass
                     if result.values[j] == 0:
                         continue
                     k = '__'.join(stats)
@@ -385,6 +408,7 @@ class SkillParserShared(parser.BaseParser):
                         'line': '',
                         'stats': [stat, ],
                         'values': [value, ],
+                        'values_parsed': [value, ],
                     }
 
             for stat_dict in data['qstats'].values():
@@ -494,7 +518,10 @@ class SkillParserShared(parser.BaseParser):
         lines = []
         for key in stat_key_order['stats']:
             if key in static['stats']:
-                sdict = level_data[0]['stats'][key]
+                try:
+                    sdict = level_data[0]['stats'][key]
+                except:
+                    sdict = level_data[-1]['stats'][key]
                 line = sdict['line']
                 stats.extend(sdict['stats'])
                 values.extend(sdict['values'])
@@ -543,17 +570,32 @@ class SkillParserShared(parser.BaseParser):
 
         # Add the attack damage stat from the game data
         if ae:
-            values = (
-                level_data[0]['DamageMultiplier'],
-                level_data[max_level]['DamageMultiplier'],
+            field_stats = (
+                (
+                    ('DamageMultiplier', ),
+                    ('active_skill_attack_damage_final_permyriad', ),
+                ),
+                (
+                    ('BaseDuration', ),
+                    ('base_skill_effect_duration', ),
+                )
             )
-            # Account for default (0 = 100%)
-            if values[0] != 0 or values[1] != 0:
-                lines.insert(0, tf.get_translation(
-                    tags=['active_skill_attack_damage_final_permyriad', ],
-                    values=[values, ],
-                    lang=config.get_option('language'),
-                )[0])
+            added = []
+            for value_keys, tags in field_stats:
+                values = [
+                    (level_data[0][key], level_data[max_level][key])
+                    for key in value_keys
+                ]
+                # Account for default (0 = 100%)
+                if values[0] != 0 or values[1] != 0:
+                    added.extend(tf.get_translation(
+                        tags=tags,
+                        values=values,
+                        lang=config.get_option('language'),
+                    ))
+
+            if added:
+                lines = added + lines
 
         infobox['stat_text'] = self._format_lines(lines)
 

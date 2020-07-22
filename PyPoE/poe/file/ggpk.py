@@ -77,6 +77,7 @@ import io
 import struct
 import os
 import re
+import warnings
 
 # 3rd Party
 import brotli
@@ -168,6 +169,17 @@ def extract_dds(data, path_or_ggpk=None):
         return dec
 
 # =============================================================================
+# Errors
+# =============================================================================
+
+class GGPKException(Exception):
+    pass
+
+class InvalidTagException(GGPKException):
+    pass
+
+
+# =============================================================================
 # Classes
 # =============================================================================
 
@@ -216,9 +228,9 @@ class BaseRecord(ReprMixin):
         ggpkfile.write(self.tag)
 
 
-class MixinRecord(object):
+class MixinRecord:
     def __init__(self, *args, **kwargs):
-        super(MixinRecord, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._name = ''
         self._name_length = 0
 
@@ -270,7 +282,7 @@ class GGPKRecord(BaseRecord):
     @doc(doc=BaseRecord.write)
     def write(self, ggpkfile):
         # Write length & tag
-        super(GGPKRecord, self).write(ggpkfile)
+        super().write(ggpkfile)
         # Should always be 2
         ggpkfile.write(struct.pack('<i', 2))
         for i in range(0, len(offsets)):
@@ -321,7 +333,7 @@ class DirectoryRecord(MixinRecord, BaseRecord):
     __slots__ = BaseRecord.__slots__.copy() + ['_name', '_name_length', 'entries_length', 'hash', 'entries']
 
     def __init__(self, *args, **kwargs):
-        super(DirectoryRecord, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     @doc(doc=BaseRecord.read)
     def read(self, ggpkfile):
@@ -348,7 +360,7 @@ class DirectoryRecord(MixinRecord, BaseRecord):
             raise ValueError('Numbers of entries must match with length')
         name_str = self._name.encode('UTF-16')
         # Write length & tag
-        super(DirectoryRecord, self).write(ggpkfile)
+        super().write(ggpkfile)
         ggpkfile.write(struct.pack('<i', self._name_length))
         ggpkfile.write(struct.pack('<i', self.entries_length))
         # Fixed 32-bytes
@@ -385,7 +397,7 @@ class FileRecord(MixinRecord, BaseRecord):
     __slots__ = BaseRecord.__slots__.copy() + ['_name', '_name_length', 'hash', 'data_start', 'data_length']
 
     def __init__(self, *args, **kwargs):
-        super(FileRecord, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         
     def extract(self, buffer=None):
         """
@@ -456,7 +468,7 @@ class FileRecord(MixinRecord, BaseRecord):
         
         name_str = self._name.encode('UTF-16')
         # Write length & tag
-        super(FileRecord, self).write(ggpkfile)
+        super().write(ggpkfile)
         ggpkfile.write(struct.pack('<i', self._name_length))
         # Fixed 32-bytes
         ggpkfile.write(self.hash)
@@ -486,11 +498,11 @@ class FreeRecord(BaseRecord):
     @doc(doc=BaseRecord.write)
     def write(self, ggpkfile):
         # Write length & tag
-        super(FreeRecord, self).write(ggpkfile)
+        super().write(ggpkfile)
         ggpkfile.write(struct.pack('<q', self.next_free))
 
 
-class DirectoryNode(object):
+class DirectoryNode:
     """
     Attributes
     ----------
@@ -828,7 +840,7 @@ class GGPKFile(AbstractFileReadOnly, metaclass=InheritedDocStringsMeta):
 
     def _read_record(self, records, ggpkfile, offset):
         length = struct.unpack('<i', ggpkfile.read(4))[0]
-        tag = ggpkfile.read(4).decode('ascii')
+        tag = ggpkfile.read(4)
         
         '''for recordcls in recordsc:
             if recordcls.tag == tag:
@@ -836,16 +848,16 @@ class GGPKFile(AbstractFileReadOnly, metaclass=InheritedDocStringsMeta):
 
         record = recordcls(self, length, offset)'''
 
-        if tag == 'FILE':
+        if tag == b'FILE':
             record = FileRecord(self, length, offset)
-        elif tag == 'FREE':
+        elif tag == b'FREE':
             record = FreeRecord(self, length, offset)
-        elif tag == 'PDIR':
+        elif tag == b'PDIR':
             record = DirectoryRecord(self, length, offset)
-        elif tag == 'GGPK':
+        elif tag == b'GGPK':
             record = GGPKRecord(self, length, offset)
         else:
-            raise ValueError()
+            raise InvalidTagException(tag)
 
         record.read(ggpkfile)
         records[offset] = record
@@ -987,13 +999,17 @@ class GGPKFile(AbstractFileReadOnly, metaclass=InheritedDocStringsMeta):
         try:
             while True:
                 offset, hash, parent = l.pop()
-                record = self.records[offset]
-                node = DirectoryNode(record, hash, parent)
-                parent.children.append(node)
+                try:
+                    record = self.records[offset]
+                except KeyError:
+                    pass
+                else:
+                    node = DirectoryNode(record, hash, parent)
+                    parent.children.append(node)
 
-                if isinstance(record, DirectoryRecord):
-                    for entry in record.entries:
-                        l.append((entry.offset, entry.hash, node))
+                    if isinstance(record, DirectoryRecord):
+                        for entry in record.entries:
+                            l.append((entry.offset, entry.hash, node))
         except IndexError:
             pass
 
@@ -1011,17 +1027,45 @@ class GGPKFile(AbstractFileReadOnly, metaclass=InheritedDocStringsMeta):
         buffer.seek(0, os.SEEK_SET)
 
         while offset < size:
-            self._read_record(
-                records=records,
-                ggpkfile=buffer,
-                offset=offset,
-            )
-            offset = buffer.tell()
+            try:
+                self._read_record(
+                    records=records,
+                    ggpkfile=buffer,
+                    offset=offset,
+                )
+            except InvalidTagException as e:
+                warnings.warn('Invalid tag %s - seeking next valid tag' % e.args)
+                buffer.seek(offset)
+
+                not_found = True
+                # Offset by 3 so I can capture things in the middle of chunks
+                offset -= 3
+                while not_found:
+                    chunk = buffer.read(4096)
+                    # TODO: Maybe remove free and GGPK here for speedups
+                    for bytestr in (b'FILE', b'PDIR', b'FREE', b'GGPK'):
+                        index = chunk.find(bytestr)
+                        if index == -1:
+                            continue
+                        else:
+                            # The tag is preceeded by u32 length
+                            offset = buffer.tell() - 4096 + index - 4
+                            buffer.seek(offset)
+                            not_found = False
+                            break
+                    else:
+                        # Offset by 3 again to account for the size of 4
+                        offset += 4093
+                        buffer.seek(offset)
+                        if len(chunk) < 4096:
+                            break
+            else:
+                offset = buffer.tell()
         self.records = records
 
     @doc(prepend=AbstractFileReadOnly.read)
     def read(self, file_path_or_raw, *args, **kwargs):
-        super(GGPKFile, self).read(file_path_or_raw, *args, **kwargs)
+        super().read(file_path_or_raw, *args, **kwargs)
         self._file_path_or_raw = file_path_or_raw
 
     @doc(doc=extract_dds)

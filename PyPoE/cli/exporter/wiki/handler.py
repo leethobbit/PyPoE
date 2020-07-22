@@ -31,8 +31,10 @@ See PyPoE/LICENSE
 
 # Python
 import os
-from collections import Iterable
+import time
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
+from requests.exceptions import HTTPError
 
 # 3rd Party
 try:
@@ -53,44 +55,22 @@ from PyPoE.cli.exporter.util import check_hash
 
 __all__ = ['ExporterHandler', 'ExporterResult', 'WikiHandler']
 
+WIKIS = {
+    'English': 'pathofexile.gamepedia.com',
+    'Russian': 'pathofexile-ru.gamepedia.com',
+    'German': 'pathofexile-de.gamepedia.com',
+    'French': 'pathofexile-fr.gamepedia.com',
+    'Spanish': 'pathofexile-es.gamepedia.com',
+}
+
 # =============================================================================
 # Classes
 # =============================================================================
 
 
-class WikiHandler(object):
-    _wiki_pages = {
-        'English': 'pathofexile.gamepedia.com',
-        'Russian': 'pathofexile-ru.gamepedia.com',
-        'German': 'pathofexile-de.gamepedia.com',
-        'French': 'pathofexile-fr.gamepedia.com',
-    }
-
+class WikiHandler:
     def add_arguments(self, parser):
-        parser.add_argument(
-            '-w', '--wiki',
-            help='Write to the gamepedia page (requires pywikibot)',
-            action='store_true',
-        )
-
-        parser.add_argument(
-            '-w-u', '--wiki-user',
-            dest='user',
-            help='Gamepedia user name to use to login into the wiki',
-            action='store',
-            type=str,
-            default='',
-        )
-
-        parser.add_argument(
-            '-w-p', '-w-pw', '--wiki-password',
-            dest='password',
-            help='Gamepedia password to use to login into the wiki',
-            action='store',
-            type=str,
-            default='',
-        )
-
+        add_parser_arguments(parser)
         parser.add_argument(
             '-w-mt', '--wiki-max-threads',
             dest='wiki_threads',
@@ -101,13 +81,6 @@ class WikiHandler(object):
         )
 
         parser.add_argument(
-            '-w-dr', '--wiki-dry-run',
-            dest='dry_run',
-            help='Don\'t actually save the wiki page and print it instead',
-            action='store_true',
-        )
-
-        parser.add_argument(
             '-w-oe', '--wiki-only-existing',
             dest='only_existing',
             help='Only write to existing pages and do not create new ones',
@@ -115,12 +88,11 @@ class WikiHandler(object):
         )
 
         parser.add_argument(
-            '-w-msg', '--wiki-message', '--wiki-edit-message',
-            dest='wiki_message',
-            help='Override the default edit message',
-            action='store',
-            type=str,
-            default='',
+            '-w-slp', '--wiki-sleep',
+            dest='wiki_sleep',
+            help='Time to sleep in seconds between requests',
+            type=int,
+            default=0,
         )
 
     def _error_catcher(self, *args, **kwargs):
@@ -135,6 +107,19 @@ class WikiHandler(object):
                     msg=Msg.error
                 )
                 fail += 1
+            except HTTPError as e:
+                if '429' in e.args[0]:
+                    console(e.args[0], Msg.error)
+                    console('Retrying in 30s- total attempts: %s' % fail)
+                    time.sleep(30)
+                    fail +=1
+                else:
+                    console(
+                        'HTTPError occurred. Retrying - total attempts: %s' %
+                        fail,
+                        msg=Msg.error
+                    )
+                    fail += 1
 
     def handle_page(self, *a, row):
         if isinstance(row['wiki_page'], str):
@@ -230,7 +215,7 @@ class WikiHandler(object):
 
     def handle(self, *a, mwclient, result, cmdargs, parser):
         # First row is handled separately to prompt the user for his password
-        url = self._wiki_pages.get(config.get_option('language'))
+        url = WIKIS.get(config.get_option('language'))
         if url is None:
             console(
                 'There is no wiki defined for language "%s"' % cmdargs.language,
@@ -238,8 +223,9 @@ class WikiHandler(object):
             )
             return
         self.site = mwclient.Site(
-            ('https', url),
-            path='/'
+            url,
+            path='/',
+            scheme='https'
         )
 
         self.site.login(
@@ -252,7 +238,6 @@ class WikiHandler(object):
         self.mwclient = mwclient
         self.cmdargs = cmdargs
         self.parser = parser
-
 
         if cmdargs.wiki_threads > 1:
             console('Starting thread pool...')
@@ -269,11 +254,12 @@ class WikiHandler(object):
             console('Editing pages...')
             for row in result:
                 self._error_catcher(row=row)
+                time.sleep(cmdargs.wiki_sleep)
 
 
 class ExporterHandler(BaseHandler):
     def __init__(self, *args, **kwargs):
-        super(ExporterHandler, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def get_wrap(self, cls, func, handler, wiki_handler):
         def wrapper(pargs, *args, **kwargs):
@@ -282,7 +268,10 @@ class ExporterHandler(BaseHandler):
                 console('Game file hash mismatch. Please rerun setup.', msg=Msg.error)
                 return -1
             # Check outdir, if specified:
-            out_dir = pargs.outdir if pargs.outdir is not None else config.get_option('out_dir')
+            if hasattr(pargs, 'outdir') and pargs.outdir:
+                out_dir = pargs.outdir
+            else:
+                out_dir = config.get_option('out_dir')
             temp_dir = config.get_option('temp_dir')
 
             for item in (out_dir, temp_dir):
@@ -291,7 +280,7 @@ class ExporterHandler(BaseHandler):
                     return -1
 
             console('Reading .dat files...')
-            parser = cls(base_path=temp_dir)
+            parser = cls(base_path=temp_dir, parsed_args=pargs)
 
             console('Parsing...')
             if handler:
@@ -495,3 +484,44 @@ class ExporterResult(list):
 # =============================================================================
 # Functions
 # =============================================================================
+
+def add_parser_arguments(parser):
+    parser.add_argument(
+        '-w', '--wiki',
+        help='Write to the gamepedia page (requires pywikibot)',
+        action='store_true',
+    )
+
+    parser.add_argument(
+        '-w-u', '--wiki-user',
+        dest='user',
+        help='Gamepedia user name to use to login into the wiki',
+        action='store',
+        type=str,
+        default='',
+    )
+
+    parser.add_argument(
+        '-w-p', '-w-pw', '--wiki-password',
+        dest='password',
+        help='Gamepedia password to use to login into the wiki',
+        action='store',
+        type=str,
+        default='',
+    )
+
+    parser.add_argument(
+        '-w-dr', '--wiki-dry-run',
+        dest='dry_run',
+        help='Don\'t actually save the wiki page and print it instead',
+        action='store_true',
+    )
+
+    parser.add_argument(
+        '-w-msg', '--wiki-message', '--wiki-edit-message',
+        dest='wiki_message',
+        help='Override the default edit message',
+        action='store',
+        type=str,
+        default='',
+    )

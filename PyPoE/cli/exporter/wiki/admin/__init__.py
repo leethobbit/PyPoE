@@ -1,11 +1,11 @@
 """
-.dat Exporter
+Administrative parser init
 
 Overview
 ===============================================================================
 
 +----------+------------------------------------------------------------------+
-| Path     | PyPoE/cli/exporter/dat/__init__.py                               |
+| Path     | PyPoE/cli/exporter/wiki/admin/__init__.py                        |
 +----------+------------------------------------------------------------------+
 | Version  | 1.0.0a0                                                          |
 +----------+------------------------------------------------------------------+
@@ -17,8 +17,6 @@ Overview
 Description
 ===============================================================================
 
-.dat Exporter
-
 Agreement
 ===============================================================================
 
@@ -29,43 +27,13 @@ See PyPoE/LICENSE
 # Imports
 # =============================================================================
 
-# Python
-
-# 3rd-party
-
-# self
-from PyPoE.cli.exporter.dat.parsers.json import JSONExportHandler
+from PyPoE.cli.exporter.wiki.admin.unique import UniqueCommandHandler
 
 # =============================================================================
 # Globals
 # =============================================================================
 
-__all__ = ['DatHandler']
 
-# =============================================================================
-# Classes
-# =============================================================================
+ADMIN_HANDLERS = [UniqueCommandHandler]
 
-
-class DatHandler:
-    """
-
-    :type sql: argparse.ArgumentParser
-    """
-    def __init__(self, sub_parser):
-        """
-
-        :type sub_parser: argparse._SubParsersAction
-        """
-        parser = sub_parser.add_parser(
-            'dat',
-            help='.dat export',
-        )
-        parser.set_defaults(func=lambda args: parser.print_help())
-
-        sub = parser.add_subparsers(help='Export type')
-        JSONExportHandler(sub)
-
-# =============================================================================
-# Functions
-# =============================================================================
+__all__ = ['ADMIN_HANDLERS']

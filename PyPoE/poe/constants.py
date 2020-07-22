@@ -85,6 +85,8 @@ __all__ = [
     'MOD_MAX_STATS',
     'MOD_STATS_RANGE',
     'MOD_SELL_PRICES',
+
+    'PASSIVE_TYPES',
 ]
 
 MOD_MAX_STATS = 6
@@ -201,6 +203,21 @@ MOD_SELL_PRICES = {
     'DelveFossilSellPrice9': {
         'Metadata/Items/Currency/CurrencyCorruptMonolith': 5,
     },
+    'VaalLegionJewel': {
+
+    },
+    'KaruiLegionJewel': {
+
+    },
+    'MarakethLegionJewel': {
+
+    },
+    'TemplarLegionJewel': {
+
+    },
+    'EternalEmpireLegionJewel': {
+
+    },
 }
 
 # =============================================================================
@@ -272,6 +289,7 @@ class IntEnumOverride(IntEnum, metaclass=IntEnumMetaOverride):
     # 18 and 19 both Scorching Ray only
     UNKNOWN6 = 18
     UNKNOWN7 = 19
+'''
 
 
 class ACTIVE_SKILL_TYPES(IntEnumOverride):
@@ -280,22 +298,87 @@ class ACTIVE_SKILL_TYPES(IntEnumOverride):
     ----------
     ATTACK
         Is an attack and uses the weapons on the entity
-    CAST
+    SPELL
         Is casted and does not use the weapon
     PROJECTILE
         Creates an projectile
-    DUALWIELD_ONLY
+    DUAL_WIELD
         Uses both hand slots
-    BUFF_SELF
+    BUFF
         Buff that applies to the entity itself
     """
     ATTACK = 1
-    CAST = 2
+    SPELL = 2
     PROJECTILE = 3
-    # Why is a monster being dual-wield only?
-    DUALWIELD_ONLY = 4
-    BUFF_SELF = 5
-    #DUALWIELD_POSSIBLE = 6'''
+    DUAL_WIELD = 4
+    BUFF = 5
+    MINION = 6
+    AREA = 8
+    DURATION = 9
+    SHIELD = 10
+    PROJECTILE_DAMAGE = 11
+    MANA_COST_RESERVED = 12
+    MANA_COST_PERCENT = 13
+    SKILL_CAN_TRAP = 14
+    SKILL_CAN_TOTEM = 15
+    SKILL_CAN_MINE = 16
+    CAUSE_ELEMENTAL_STATUS = 17
+    CREATE_MINION = 18
+    CHAINING = 19
+    MELEE = 20
+    SPELL_CAN_REPEAT = 21
+    UNKNOWN1 = 22
+    ATTACK_CAN_REPEAT = 23
+    CAUSES_BURNING = 24
+    TOTEM = 25
+    UNKNOWN2 = 26
+    CURSE = 27
+    FIRE_SKILL = 28
+    COLD_SKILL = 29
+    LIGHTNING_SKILL = 30
+    TRIGGERABLE = 31
+    TRAP = 32
+    MOVEMENT_SKILL = 33
+    DAMAGE_OVER_TIME = 34
+    MINE = 35
+    TRIGGERED = 36
+    VAAL = 37
+    AURA = 38
+    UNKNOWN3 = 39
+    PROJECTILE_ATTACK = 40
+    CHAOS_SKLL = 41
+    UNKNOWN5 = 42
+    UNKNOWN6 = 43
+    UNKNOWN7 = 44
+    UNKNOWN8 = 45
+    UNKNOWN9 = 46
+    CHANNELLED = 47
+    UNKNOWN10 = 48
+    TRIGGERED_GRANTED_SKILL = 49
+    GOLEM = 50
+    HERALD = 51
+    AURA_DEBUFF = 52
+    UNKNOWN11 = 53
+    UNKNOWN12 = 54
+    SPELL_CAN_CASCADE = 55
+    SPELL_CAN_VOLLEY = 56
+    SPELL_CAN_MIRAGE_ARGER = 57
+    UNKNOWN13 = 58
+    UNKNOWN14 = 59
+    UNKNOWN15 = 60
+    UNKNOWN16 = 61
+    WARCRY = 62
+    INSTANT = 63
+    BRAND = 64
+    DESTROYS_CORPSE = 65
+    NON_HIT_CHILL = 66
+    APPLIES_CURSE = 68
+    CAN_RAPID_FIRE = 69
+    AURA_DURATION = 70
+    AREA_SPELL = 71
+    OR = 72
+    AND = 73
+    NOT = 74
 
 
 class BETRAYAL_UPGRADE_SLOTS(IntEnumOverride):
@@ -533,7 +616,9 @@ class MAP_FRAGMENT_FAMILIES(IntEnumOverride):
     AMBUSH = 8
     HARBINGER = 9
     PERANDUS = 10
-    REGULAR = 11
+    LEGION = 11
+    METAMORPH = 12
+    REGULAR = 13
 
     DEFAULT = REGULAR
     STANDARD = REGULAR
@@ -581,6 +666,12 @@ class MOD_DOMAIN(IntEnumOverride):
         For delve modifiers
     DELVE_AREA
         For modifiers appearing on delve areas
+    SYNTHESIS_GLOBALS
+        Synthesis global modifiers for areas
+    SYNTHESIS_BONUS
+        Synthesis modifiers that grant a bonus to other modifiers
+    AFFLICTION_JEWEL
+        Modifiers for the affliction jewels
     """
     ITEM = 1
     FLASK = 2
@@ -600,10 +691,15 @@ class MOD_DOMAIN(IntEnumOverride):
     DUMMY = 15
     DELVE = 16
     DELVE_AREA = 17
+    SYNTHESIS_A = 18
+    SYNTHESIS_GLOBALS = 19
+    SYNTHESIS_BONUS = 20
+    AFFLICTION_JEWEL = 21
+    UNDEFINED = 22
 
     # legacy names
-    MASTER = 9
-    JEWEL = 10
+    MASTER = CRAFTED
+    JEWEL = MISC
 
 
 class MOD_GENERATION_TYPE(IntEnumOverride):
@@ -643,6 +739,16 @@ class MOD_GENERATION_TYPE(IntEnumOverride):
         For 'bestiary' modifiers that appear on bestiary monsters
     DELVE_AERA
         For modifiers that appear on delve areas
+    SYNTHESIS_A
+        TODO
+    SYNTHESIS_GLOBALS
+        TODO
+    SYNTHESIS_BONUS
+        TODO
+    BLIGHT
+        TODO
+    MONSTER_AFFLICTION
+        TODO
     """
     PREFIX = 1
     SUFFIX = 2
@@ -657,6 +763,12 @@ class MOD_GENERATION_TYPE(IntEnumOverride):
     ESSENCE = 11
     BESTIARY = 13
     DELVE_AREA = 14
+    SYNTHESIS_A = 15
+    SYNTHESIS_GLOBALS = 16
+    SYNTHESIS_BONUS = 17
+    BLIGHT = 18
+    BLIGHT_TOWER = 19
+    MONSTER_AFFLICTION = 20
 
 
 class WORDLISTS(IntEnumOverride):
@@ -750,6 +862,42 @@ class STAT_INTERPOLATION_TYPES(IntEnumOverride):
     CONSTANT = 1
     LINEAR = 2
     EXPONENTIAL = 3
+
+
+class SCARAB_TYPES(IntEnumOverride):
+    """
+    Representation of scarab types (ScarabTypes.dat)
+
+    Attributes
+    ----------
+    """
+    BESTIARY = 0
+    BREACH = 1
+    CARTOGRAPHY = 2
+    RELIQUARY = 3
+    SHAPER = 4
+    ELDER = 5
+    DIVINATION = 6
+    TORMENT = 7
+    AMBUSH = 8
+    HARBINGER = 9
+    PERANDUS = 10
+    LEGION = 11
+    METAMORPH = 12
+    SULFITE = 13
+
+
+class HARVEST_OBJECT_TYPES(IntEnumOverride):
+    NONE = 0
+    WILD = 1
+    VIVID = 2
+    PRIMAL = 3
+
+class PASSIVE_TYPES(IntEnumOverride):
+    REGULAR1 = 1
+    REGULAR2 = 2
+    NOTABLE = 3
+    KEYSTONE = 4
 
 # =============================================================================
 # Functions

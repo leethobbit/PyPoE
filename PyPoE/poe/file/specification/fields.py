@@ -197,6 +197,7 @@ from collections import OrderedDict
 
 # self
 from PyPoE.poe import constants
+from PyPoE.shared.mixins import ReprMixin
 from PyPoE.poe.file.specification.errors import SpecificationError
 
 # =============================================================================
@@ -210,7 +211,7 @@ __all__ = ['Specification', 'File', 'Field', 'VirtualField']
 # =============================================================================
 
 
-class _Common(object):
+class _Common:
     def as_dict(self):
         """
         Returns
@@ -226,7 +227,7 @@ class Specification(dict):
     Specification file
     """
     def __init__(self, *args, **kwargs):
-        super(Specification, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def validate(self):
         """
@@ -353,7 +354,7 @@ class Specification(dict):
         }
 
 
-class File(object):
+class File:
     """
     Represents a single file in the specification.
 
@@ -461,7 +462,7 @@ class File(object):
         return out
 
 
-class Field(_Common):
+class Field(_Common, ReprMixin):
     """
     Fields instances are used to tie a specific set of information to a
     column field.
@@ -519,7 +520,7 @@ class Field(_Common):
 
     def __init__(self, type, key=None, key_id=None, key_offset=0, enum=None,
                  unique=False, file_path=False, file_ext=None, display=None,
-                 display_type='{0}', description=None):
+                 display_type=None, description=None, name=None):
         """
         All parameters except type are optional.
 
@@ -560,6 +561,8 @@ class Field(_Common):
             Python formatter syntax for outputting the value
         description : str
             Description of what this field does
+        name : str
+            Name of the field
         """
         self.type = type
         self.key = key
@@ -572,6 +575,15 @@ class Field(_Common):
         self.display = display
         self.display_type = display_type
         self.description = description
+        self.name = name
+
+        if display_type is None:
+            if type == 'float':
+                self.display_type = '{0:.6f}'
+            else:
+                self.display_type = '{0}'
+        else:
+            self.display_type = display_type
 
     def __getitem__(self, item):
         return getattr(self, item)
